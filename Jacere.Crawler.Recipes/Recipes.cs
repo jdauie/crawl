@@ -7,6 +7,7 @@ using System.Linq;
 using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Jacere.Crawler.Recipes
@@ -33,6 +34,8 @@ namespace Jacere.Crawler.Recipes
     /// </summary>
     public class Recipes
     {
+        private const int CrawlDelay = 500;
+
         private static string _token;
 
         private static HtmlDocument GetHtmlDocument(string url, bool token = false)
@@ -52,8 +55,16 @@ namespace Jacere.Crawler.Recipes
             }
         }
 
+        private static void RandomDelay()
+        {
+            var delay = new Random().Next(CrawlDelay / 2, CrawlDelay + CrawlDelay / 2);
+            Thread.Sleep(delay);
+        }
+
         private static Card[] GetJsonCards(string url)
         {
+            RandomDelay();
+
             var request = WebRequest.Create(url);
             request.Headers.Set("Authorization", $"Bearer {_token}");
             using (var response = request.GetResponse())
@@ -63,6 +74,11 @@ namespace Jacere.Crawler.Recipes
                     return JsonConvert.DeserializeObject<Page>(reader.ReadToEnd()).Cards;
                 }
             }
+        }
+
+        private static void GetDetail()
+        {
+            //http://allrecipes.com/recipe/:id
         }
 
         private static List<Item> GetItemsFromPage(Category category, int page)
@@ -79,7 +95,7 @@ namespace Jacere.Crawler.Recipes
                 }).ToList();
         }
 
-        private static int FindLastPage(Category category)
+        private static int FindLastPage(Category category, Action<int, List<Item>> progress)
         {
             var lower = 1;
             var upper = 0;
@@ -93,6 +109,10 @@ namespace Jacere.Crawler.Recipes
                     upper = lower;
                     lower /= 2;
                     break;
+                }
+                else
+                {
+                    progress(lower, items);
                 }
                 lower *= 2;
             }
@@ -112,6 +132,7 @@ namespace Jacere.Crawler.Recipes
                 }
                 else
                 {
+                    progress(page, items);
                     lower = page;
                 }
             }
@@ -133,13 +154,47 @@ namespace Jacere.Crawler.Recipes
                         ImageUrl = node.SelectSingleNode("img").GetAttributeValue("src", null),
                     };
                 }).ToList();
-            Console.WriteLine(categories.Count);
+            Console.WriteLine($"{categories.Count} categories");
+
+            var cachedPages = categories.ToDictionary(c => c.Id, c => new Dictionary<int, List<Item>>());
 
             foreach (var category in categories)
             {
-                var page = FindLastPage(category);
-                break;
+                category.PageCount = FindLastPage(category, (page, items) => {
+                    cachedPages[category.Id][page] = items;
+                    Console.Write($"probing {cachedPages.Values.Sum(c => c.Count)}\r");
+                });
             }
+
+            Console.Write($"{new string(' ', 80)}\r");
+            Console.WriteLine($"{cachedPages.Values.Sum(c => c.Count)} probes");
+            Console.WriteLine($"{categories.Sum(c => c.PageCount)} pages");
+
+            var allItems = new List<Item>();
+            var crawledPages = 0;
+
+            var startTime = DateTime.Now;
+
+            foreach (var category in categories)
+            {
+                for (var page = 1; page <= category.PageCount; page++)
+                {
+                    var pageItems = cachedPages[category.Id].ContainsKey(page)
+                        ? cachedPages[category.Id][page]
+                        : GetItemsFromPage(category, page);
+                    
+                    foreach (var item in pageItems)
+                    {
+                        // get page detail and images
+                    }
+
+                    var remainingTime = TimeSpan.FromSeconds((DateTime.Now - startTime).TotalSeconds / allItems.Count * (categories.Sum(c => c.PageCount) - crawledPages) * 20);
+                    Console.Write($"crawling {++crawledPages} ({remainingTime.ToString(@"dd\.hh\:mm\:ss")} remaining)\r");
+                }
+            }
+
+            Console.Write($"{new string(' ', 80)}\r");
+            Console.WriteLine($"{allItems.Count} items");
         }
     }
 }
