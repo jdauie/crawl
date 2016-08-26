@@ -14,5 +14,11 @@ namespace Jacere.Crawler.Recipes
         public string Description { get; set; }
         public string Cook { get; set; }
         public string ImageName { get; set; }
+
+        public List<string> Ingredients { get; set; }
+        public List<string> Directions { get; set; }
+        public string Calories { get; set; }
+        public string PrepTime { get; set; }
+        public string TotalTime { get; set; }
     }
 }

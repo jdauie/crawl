@@ -55,6 +55,15 @@ namespace Jacere.Crawler.Recipes
             }
         }
 
+        private static void SaveImage(string url, Stream outStream)
+        {
+            var request = WebRequest.Create(url);
+            using (var response = request.GetResponse())
+            {
+                response.GetResponseStream().CopyTo(outStream);
+            }
+        }
+
         private static void RandomDelay()
         {
             var delay = new Random().Next(CrawlDelay / 2, CrawlDelay + CrawlDelay / 2);
@@ -110,10 +119,7 @@ namespace Jacere.Crawler.Recipes
                     lower /= 2;
                     break;
                 }
-                else
-                {
-                    progress(lower, items);
-                }
+                progress(lower, items);
                 lower *= 2;
             }
 
@@ -142,6 +148,18 @@ namespace Jacere.Crawler.Recipes
 
         public static void Start()
         {
+            const string storageRoot = @"C:/tmp/scrape/recipes";
+            const bool debugFirstPageOnly = false;
+            if (Directory.Exists(storageRoot))
+            {
+                Directory.Delete(storageRoot, true);
+            }
+            Directory.CreateDirectory(storageRoot);
+            while (!Directory.Exists(storageRoot))
+            {
+                Thread.Sleep(100);
+            }
+
             var doc = GetHtmlDocument(@"http://allrecipes.com/recipes/?grouping=all", true);
             var categories = doc.DocumentNode
                 .SelectNodes(@"//section[@id='herolinks']/div[@ng-show='showAll===true']//a[@class='hero-link__item']")
@@ -154,13 +172,26 @@ namespace Jacere.Crawler.Recipes
                         ImageUrl = node.SelectSingleNode("img").GetAttributeValue("src", null),
                     };
                 }).ToList();
+            if (debugFirstPageOnly)
+            {
+                categories = new List<Category>()
+                {
+                    categories[0],
+                };
+            }
             Console.WriteLine($"{categories.Count} categories");
 
             var cachedPages = categories.ToDictionary(c => c.Id, c => new Dictionary<int, List<Item>>());
 
             foreach (var category in categories)
             {
-                category.PageCount = FindLastPage(category, (page, items) => {
+                if (debugFirstPageOnly)
+                {
+                    category.PageCount = 1;
+                    break;
+                }
+                category.PageCount = FindLastPage(category, (page, items) =>
+                {
                     cachedPages[category.Id][page] = items;
                     Console.Write($"probing {cachedPages.Values.Sum(c => c.Count)}\r");
                 });
@@ -170,8 +201,10 @@ namespace Jacere.Crawler.Recipes
             Console.WriteLine($"{cachedPages.Values.Sum(c => c.Count)} probes");
             Console.WriteLine($"{categories.Sum(c => c.PageCount)} pages");
 
-            var allItems = new List<Item>();
-            var crawledPages = 0;
+            var estimatedTotalItems = categories.Sum(c => c.PageCount) * 20;
+            var actualItems = 0;
+            var failedItems = 0;
+            var imageItems = 0;
 
             var startTime = DateTime.Now;
 
@@ -185,16 +218,60 @@ namespace Jacere.Crawler.Recipes
                     
                     foreach (var item in pageItems)
                     {
-                        // get page detail and images
-                    }
+                        RandomDelay();
 
-                    var remainingTime = TimeSpan.FromSeconds((DateTime.Now - startTime).TotalSeconds / allItems.Count * (categories.Sum(c => c.PageCount) - crawledPages) * 20);
-                    Console.Write($"crawling {++crawledPages} ({remainingTime.ToString(@"dd\.hh\:mm\:ss")} remaining)\r");
+                        try
+                        {
+                            var detailsRoot = GetHtmlDocument($"http://allrecipes.com/recipe/{item.Id}").DocumentNode;
+
+                            item.Ingredients = detailsRoot.SelectNodes(
+                                @"//section[@class='recipe-ingredients']//li[@class='checkList__line']//span[contains(@class,'recipe-ingred_txt')][@itemprop='ingredients']")
+                                .Select(node => node.InnerText).ToList();
+
+                            item.Directions = detailsRoot.SelectNodes(
+                                @"//ol[@itemprop='recipeInstructions']//span[contains(@class, 'recipe-directions__list--item')]")
+                                .Select(node => node.InnerText).ToList();
+
+                            item.Calories = detailsRoot.SelectNodes(@"//span[@class='calorie-count']/span")
+                                .First().InnerText;
+
+                            item.PrepTime = detailsRoot.SelectNodes(@"//time[@itemprop='prepTime']")?
+                                .First()
+                                .GetAttributeValue("datetime", null)?.Substring(2);
+
+                            item.TotalTime = detailsRoot.SelectNodes(@"//time[@itemprop='totalTime']")?
+                                .First()
+                                .GetAttributeValue("datetime", null)?.Substring(2);
+
+                            if (item.ImageName != null)
+                            {
+                                var imageUrl = $"http://images.media-allrecipes.com/userphotos/600x600/{item.ImageName}";
+                                using (var outStream = new FileStream(Path.Combine(storageRoot, item.ImageName),
+                                    FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                                {
+                                    SaveImage(imageUrl, outStream);
+                                }
+                                ++imageItems;
+                            }
+
+                            File.WriteAllText(Path.Combine(storageRoot, $"item-{item.Id}.json"),
+                                JsonConvert.SerializeObject(item));
+                        }
+                        catch
+                        {
+                            ++failedItems;
+                        }
+
+                        ++actualItems;
+                        
+                        var remainingTime = TimeSpan.FromSeconds((DateTime.Now - startTime).TotalSeconds / actualItems * estimatedTotalItems);
+                        Console.Write($"crawling {actualItems} ({remainingTime.ToString(@"dd\.hh\:mm\:ss")} remaining)\r");
+                    }
                 }
             }
 
             Console.Write($"{new string(' ', 80)}\r");
-            Console.WriteLine($"{allItems.Count} items");
+            Console.WriteLine($"{actualItems} items ({imageItems} images, {failedItems} failed)");
         }
     }
 }
