@@ -29,7 +29,7 @@ namespace Jacere.Crawler.Recipes
     /// http://allrecipes.com/recipe/${item.id}
     /// http://images.media-allrecipes.com/userphotos/600x600/${item.image}
     /// 
-    /// retry a few times, but if detail isn't available, drop the item
+    /// retry a few times, but if detail isn't available, drop the item?
     /// if image isn't available, ?
     /// </summary>
     public class Recipes
@@ -83,11 +83,6 @@ namespace Jacere.Crawler.Recipes
                     return JsonConvert.DeserializeObject<Page>(reader.ReadToEnd()).Cards;
                 }
             }
-        }
-
-        private static void GetDetail()
-        {
-            //http://allrecipes.com/recipe/:id
         }
 
         private static List<Item> GetItemsFromPage(Category category, int page)
@@ -146,10 +141,9 @@ namespace Jacere.Crawler.Recipes
             return lower;
         }
 
-        public static void Start()
+        public static void Start(bool debugSampleOnly = false)
         {
             const string storageRoot = @"C:/tmp/scrape/recipes";
-            const bool debugFirstPageOnly = false;
             if (Directory.Exists(storageRoot))
             {
                 Directory.Delete(storageRoot, true);
@@ -172,24 +166,27 @@ namespace Jacere.Crawler.Recipes
                         ImageUrl = node.SelectSingleNode("img").GetAttributeValue("src", null),
                     };
                 }).ToList();
-            if (debugFirstPageOnly)
+
+            if (debugSampleOnly)
             {
                 categories = new List<Category>()
                 {
                     categories[0],
                 };
             }
+
             Console.WriteLine($"{categories.Count} categories");
 
             var cachedPages = categories.ToDictionary(c => c.Id, c => new Dictionary<int, List<Item>>());
 
             foreach (var category in categories)
             {
-                if (debugFirstPageOnly)
+                if (debugSampleOnly)
                 {
                     category.PageCount = 1;
                     break;
                 }
+
                 category.PageCount = FindLastPage(category, (page, items) =>
                 {
                     cachedPages[category.Id][page] = items;
@@ -218,6 +215,15 @@ namespace Jacere.Crawler.Recipes
                     
                     foreach (var item in pageItems)
                     {
+                        var storageChunkPath = Path.Combine(storageRoot, $"chunk-{item.Id % 100}");
+                        Directory.CreateDirectory(storageChunkPath);
+                        var itemPath = Path.Combine(storageChunkPath, $"item-{item.Id}.json");
+
+                        if (File.Exists(itemPath))
+                        {
+                            continue;
+                        }
+
                         RandomDelay();
 
                         try
@@ -243,10 +249,15 @@ namespace Jacere.Crawler.Recipes
                                 .First()
                                 .GetAttributeValue("datetime", null)?.Substring(2);
 
+                            if (item.ImageName != "44555.png")
+                            {
+                                item.ImageName = null;
+                            }
+
                             if (item.ImageName != null)
                             {
                                 var imageUrl = $"http://images.media-allrecipes.com/userphotos/600x600/{item.ImageName}";
-                                using (var outStream = new FileStream(Path.Combine(storageRoot, item.ImageName),
+                                using (var outStream = new FileStream(Path.Combine(storageChunkPath, item.ImageName),
                                     FileMode.CreateNew, FileAccess.Write, FileShare.None))
                                 {
                                     SaveImage(imageUrl, outStream);
@@ -254,8 +265,7 @@ namespace Jacere.Crawler.Recipes
                                 ++imageItems;
                             }
 
-                            File.WriteAllText(Path.Combine(storageRoot, $"item-{item.Id}.json"),
-                                JsonConvert.SerializeObject(item));
+                            File.WriteAllText(itemPath, JsonConvert.SerializeObject(item));
                         }
                         catch
                         {
