@@ -7,6 +7,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Jacere.Crawler", "Jacere.Cr
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Jacere.Crawler.Recipes", "Jacere.Crawler.Recipes\Jacere.Crawler.Recipes.csproj", "{5E92F5F4-E88D-4808-BF40-F3626EE8DD3D}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Jacere.Crawler.Stories", "Jacere.Crawler.Stories\Jacere.Crawler.Stories.csproj", "{516B4AD6-B875-4F5C-8423-67F079F5CC7B}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -21,6 +23,10 @@ Global
 		{5E92F5F4-E88D-4808-BF40-F3626EE8DD3D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{5E92F5F4-E88D-4808-BF40-F3626EE8DD3D}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{5E92F5F4-E88D-4808-BF40-F3626EE8DD3D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{516B4AD6-B875-4F5C-8423-67F079F5CC7B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{516B4AD6-B875-4F5C-8423-67F079F5CC7B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{516B4AD6-B875-4F5C-8423-67F079F5CC7B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{516B4AD6-B875-4F5C-8423-67F079F5CC7B}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
