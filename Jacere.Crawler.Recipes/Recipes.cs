@@ -32,6 +32,8 @@ namespace Jacere.Crawler.Recipes
     /// </summary>
     public class Recipes
     {
+        private const string StorageRoot = @"C:/tmp/scrape/recipes";
+
         private const int CrawlDelay = 500;
 
         private static string _token;
@@ -165,10 +167,9 @@ namespace Jacere.Crawler.Recipes
 
         public static void Start(bool debugSampleOnly = false)
         {
-            const string storageRoot = @"C:/tmp/scrape/recipes";
-            Directory.CreateDirectory(storageRoot);
+            Directory.CreateDirectory(StorageRoot);
 
-            var categoriesPath = Path.Combine(storageRoot, $"categories.json");
+            var categoriesPath = Path.Combine(StorageRoot, "categories.json");
 
             List<Category> categories;
             Dictionary<int, Dictionary<int, List<Item>>> cachedPages; ;
@@ -242,7 +243,7 @@ namespace Jacere.Crawler.Recipes
                     
                     foreach (var item in pageItems)
                     {
-                        var storageChunkPath = Path.Combine(storageRoot, $"chunk-{item.Id % 100}");
+                        var storageChunkPath = Path.Combine(StorageRoot, $"chunk-{item.Id % 100}");
                         Directory.CreateDirectory(storageChunkPath);
                         var itemPath = Path.Combine(storageChunkPath, $"item-{item.Id}.json");
 
