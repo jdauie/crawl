@@ -6,7 +6,8 @@ namespace Jacere.Crawler
     {
         static void Main(string[] args)
         {
-            Recipes.Recipes.Start();
+            //Recipes.Recipes.Start();
+            Recipes.Recipes.Analyze3();
         }
     }
 }

@@ -5,8 +5,11 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Reflection;
 using System.Text.RegularExpressions;
 using System.Threading;
+using System.Web;
+using Newtonsoft.Json.Linq;
 
 namespace Jacere.Crawler.Recipes
 {
@@ -32,6 +35,7 @@ namespace Jacere.Crawler.Recipes
     /// </summary>
     public class Recipes
     {
+        private const string BaseUrl = @"http://localjournal.submishmash.com";
         private const string StorageRoot = @"C:/tmp/scrape/recipes";
 
         private const int CrawlDelay = 500;
@@ -315,6 +319,223 @@ namespace Jacere.Crawler.Recipes
 
             Console.Write($"{new string(' ', 80)}\r");
             Console.WriteLine($"{actualItems} items ({imageItems} images, {failedItems} failed)");
+        }
+
+        private static string GetDataResourceString(string file, object parameters = null)
+        {
+            var assembly = Assembly.GetExecutingAssembly();
+            using (var stream = assembly.GetManifestResourceStream($"{typeof(Recipes).Namespace}.Data.{file}"))
+            {
+                return Populate(new StreamReader(stream).ReadToEnd(), parameters);
+            }
+        }
+
+        private static object GetDataResourceJson(string file, object parameters = null)
+        {
+            return JsonConvert.DeserializeObject(GetDataResourceString(file, parameters));
+        }
+
+        private static string Populate(string str, object parameters)
+        {
+            parameters?
+                .GetType()
+                .GetProperties()
+                .ToList()
+                .ForEach(
+                    x => str = str.Replace("{" + x.Name + "}", JsonConvert.SerializeObject(x.GetValue(parameters))));
+
+            return str;
+        }
+
+        private static Submittable.Context CreateAuthenticatedContext()
+        {
+            var context = new Submittable.Context(BaseUrl);
+            context.Login("dev@submittable.com", "password");
+            return context;
+        }
+
+        public static void Analyze2()
+        {
+            var context = CreateAuthenticatedContext();
+
+            var publisherId = 404;
+            var productName = "asdf";
+            var productId = 0;
+
+            object parameters = new {
+                PublisherId = publisherId,
+                ProductName = productName,
+                ProductId = productId,
+            };
+
+            productId = context.EditCategory(GetDataResourceJson("create-category-1-edit.json", parameters));
+
+            parameters = new {
+                PublisherId = publisherId,
+                ProductName = productName,
+                ProductId = productId,
+            };
+
+            context.SaveProductPrices(productId, GetDataResourceJson("create-category-2-saveproductprices.json", parameters));
+            context.SavePaymentAddons(productId, GetDataResourceJson("create-category-3-savepaymentaddons.json", parameters));
+            context.SaveForm(productId, GetDataResourceJson("create-category-4-saveform.json", parameters));
+            context.SaveReviewForm(productId, GetDataResourceJson("create-category-5-savereviewform.json", parameters));
+
+            var total = 0;
+        }
+
+        public static void Analyze3()
+        {
+            var context = CreateAuthenticatedContext();
+            var categoryId = 4332;
+
+            var root = context.GetSubmissionPage(categoryId).DocumentNode;
+            
+            var controlGroups = root.SelectNodes(
+                @"//div[contains(@class, 'ctrlHolder')]")
+                .ToList();
+
+            // always included, even if branch is not selected
+            var controlLabels = controlGroups.Select(x => x.PreviousSibling.PreviousSibling)
+                .Select(x => new KeyValuePair<string, string>(x.GetAttributeValue("name", ""), x.GetAttributeValue("value", ""))).ToList();
+            
+            var controlInnerLabels = controlGroups.Select(x => x.SelectSingleNode(@"input[@type='hidden']"))
+                .Select(x => new KeyValuePair<string, string>(x?.GetAttributeValue("name", ""), x?.GetAttributeValue("value", ""))).ToList();
+
+            var controls = controlGroups.Select(x => x.SelectSingleNode(@"div[contains(@class, 'left-side')]").ChildNodes[1]).ToList();
+
+            var groups = new Dictionary<string, List<KeyValuePair<string, string>>>();
+
+            for (var i = 0; i < controlGroups.Count; i++)
+            {
+                var pairs = new List<KeyValuePair<string, string>>();
+                var getInnerLabel = true;
+
+                var control = controls[i];
+                if (control.Name == "ul")
+                {
+                    // option list
+                    var options = control.SelectNodes(@".//input")
+                        .Select(x => new KeyValuePair<string, string>(x.GetAttributeValue("name", ""), "")).ToList();
+                    // later, fill in the first one
+                    pairs.AddRange(options);
+                }
+                else if (control.Name == "div")
+                {
+                    // file upload
+                    var hidden = controlGroups[i].SelectNodes(@"./input[@type='hidden']")
+                        .Take(4)
+                        .Select(x => new KeyValuePair<string, string>(x.GetAttributeValue("name", ""), x.GetAttributeValue("value", ""))).ToList();
+                    pairs.AddRange(hidden);
+                    getInnerLabel = false;
+                }
+                else
+                {
+                    pairs.Add(new KeyValuePair<string, string>(control.GetAttributeValue("name", ""), ""));
+                }
+                
+                if (getInnerLabel && !string.IsNullOrEmpty(controlInnerLabels[i].Key))
+                {
+                    pairs.Add(controlInnerLabels[i]);
+                }
+
+                groups[controlLabels[i].Value] = pairs;
+            }
+            
+            var otherHiddenFields = root.SelectNodes(@"//form/input[@type='hidden'][not(contains(@name, 'CustomField'))]")
+                .Select(x => new KeyValuePair<string, string>(x.GetAttributeValue("name", ""), x.GetAttributeValue("value", ""))).ToList();
+            
+            var items = new List<Item>();
+
+            // sample
+            items.Add(JsonConvert.DeserializeObject<Item>(
+                File.ReadAllText(@"C:\tmp\scrape\recipes\chunk-46\item-241046.json")));
+
+            foreach (var item in items)
+            {
+                var data = new List<KeyValuePair<string, string>>();
+
+                item.ImageName = null;
+
+                data.AddRange(GetPairs(groups["Title"], item.Title));
+                data.AddRange(GetPairs(groups["Description"], item.Description));
+                data.AddRange(GetPairs(groups["Cook"], item.Cook));
+                data.AddRange(GetPairs(groups["Is there an image?"], (item.ImageName != null) ? "Yes" : "No"));
+                if (item.ImageName != null)
+                {
+                    data.AddRange(GetPairs(groups["Image"]));
+                }
+                data.AddRange(GetPairs(groups["Ingredients"], string.Join("\n", item.Ingredients)));
+                data.AddRange(GetPairs(groups["Directions"], string.Join("\n", item.Directions)));
+                data.AddRange(GetPairs(groups["Calories"], item.Calories));
+                data.AddRange(GetPairs(groups["Is the preparation time known?"], !string.IsNullOrWhiteSpace(item.PrepTime) ? "Yes" : "No"));
+                if (!string.IsNullOrWhiteSpace(item.PrepTime))
+                {
+                    data.AddRange(GetPairs(groups["Preparation Time"], item.PrepTime));
+                }
+                data.AddRange(GetPairs(groups["Is the total time known?"], !string.IsNullOrWhiteSpace(item.TotalTime) ? "Yes" : "No"));
+                if (!string.IsNullOrWhiteSpace(item.TotalTime))
+                {
+                    data.AddRange(GetPairs(groups["Total Time"], item.PrepTime));
+                }
+                data.AddRange(GetPairs(groups["URL"], $"http://allrecipes.com/recipe/{item.Id}"));
+
+                data.AddRange(controlLabels);
+                data.AddRange(otherHiddenFields);
+
+                context.Submit(categoryId, data);
+            }
+        }
+
+        private static IEnumerable<KeyValuePair<string, string>> GetPairs(IReadOnlyList<KeyValuePair<string, string>> group, string value = null)
+        {
+            yield return new KeyValuePair<string, string>(group[0].Key, value ?? group[0].Value);
+            foreach (var pair in group.Skip(1))
+            {
+                yield return pair;
+            }
+        }
+
+        public static void Analyze()
+        {
+            var total = 0;
+            var hasCook = 0;
+            var hasImage = 0;
+            var hasCalories = 0;
+            var hasPrepTime = 0;
+            var hasTotalTime = 0;
+
+            var cooks = new HashSet<string>();
+
+            foreach (var dir in Directory.EnumerateDirectories(StorageRoot))
+            {
+                foreach (var file in Directory.EnumerateFiles(dir, "*.json"))
+                {
+                    var item = JsonConvert.DeserializeObject<Item>(File.ReadAllText(file));
+                    ++total;
+                    if (!string.IsNullOrWhiteSpace(item.Cook)) ++hasCook;
+                    if (!string.IsNullOrWhiteSpace(item.ImageName)) ++hasImage;
+                    if (!string.IsNullOrWhiteSpace(item.Calories)) ++hasCalories;
+                    if (!string.IsNullOrWhiteSpace(item.PrepTime)) ++hasPrepTime;
+                    if (!string.IsNullOrWhiteSpace(item.TotalTime)) ++hasTotalTime;
+
+                    if (string.IsNullOrWhiteSpace(item.Cook))
+                    {
+                        Console.WriteLine(file);
+                    }
+
+                    cooks.Add(item.Cook);
+                }
+            }
+
+            Console.WriteLine($"total:        {total}");
+            Console.WriteLine($"hasCook:      {hasCook}");
+            Console.WriteLine($"hasImage:     {hasImage}");
+            Console.WriteLine($"hasCalories:  {hasCalories}");
+            Console.WriteLine($"hasPrepTime:  {hasPrepTime}");
+            Console.WriteLine($"hasTotalTime: {hasTotalTime}");
+
+            Console.WriteLine($"distinct cooks: {cooks.Count}");
         }
     }
 }
