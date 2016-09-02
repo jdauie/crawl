@@ -1,6 +1,8 @@
 ﻿using HtmlAgilityPack;
 using Newtonsoft.Json;
 using System;
+using System.Collections.Async;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -8,6 +10,7 @@ using System.Net;
 using System.Reflection;
 using System.Text.RegularExpressions;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Web;
 using Newtonsoft.Json.Linq;
 
@@ -267,7 +270,7 @@ namespace Jacere.Crawler.Recipes
                                     @"//ol[@itemprop='recipeInstructions']//span[contains(@class, 'recipe-directions__list--item')]")
                                     .Select(node => node.InnerText).ToList();
 
-                                item.Calories = detailsRoot.SelectNodes(@"//span[@class='calorie-count']/span")
+                                item.Calories = detailsRoot.SelectNodes(@"//span[@class='calorie-count']/span")?
                                     .First().InnerText;
 
                                 item.PrepTime = detailsRoot.SelectNodes(@"//time[@itemprop='prepTime']")?
@@ -347,16 +350,14 @@ namespace Jacere.Crawler.Recipes
             return str;
         }
 
-        private static Submittable.Context CreateAuthenticatedContext()
+        private static async Task<Submittable.Context> CreateAuthenticatedContext()
         {
-            var context = new Submittable.Context(BaseUrl);
-            context.Login("dev@submittable.com", "password");
-            return context;
+            return await Submittable.Context.Login(BaseUrl, "josh+ignore+1@submittable.com", "password");
         }
 
-        public static void Analyze2()
+        public static async Task<int> CreateCategory()
         {
-            var context = CreateAuthenticatedContext();
+            var context = await CreateAuthenticatedContext();
 
             var publisherId = 404;
             var productName = "asdf";
@@ -368,7 +369,7 @@ namespace Jacere.Crawler.Recipes
                 ProductId = productId,
             };
 
-            productId = context.EditCategory(GetDataResourceJson("create-category-1-edit.json", parameters));
+            productId = await context.EditCategory(GetDataResourceJson("create-category-1-edit.json", parameters));
 
             parameters = new {
                 PublisherId = publisherId,
@@ -376,20 +377,21 @@ namespace Jacere.Crawler.Recipes
                 ProductId = productId,
             };
 
-            context.SaveProductPrices(productId, GetDataResourceJson("create-category-2-saveproductprices.json", parameters));
-            context.SavePaymentAddons(productId, GetDataResourceJson("create-category-3-savepaymentaddons.json", parameters));
-            context.SaveForm(productId, GetDataResourceJson("create-category-4-saveform.json", parameters));
-            context.SaveReviewForm(productId, GetDataResourceJson("create-category-5-savereviewform.json", parameters));
+            // these can probably run in parallel, but just to be safe...
+            await context.SaveProductPrices(productId, GetDataResourceJson("create-category-2-saveproductprices.json", parameters));
+            await context.SavePaymentAddons(productId, GetDataResourceJson("create-category-3-savepaymentaddons.json", parameters));
+            await context.SaveForm(productId, GetDataResourceJson("create-category-4-saveform.json", parameters));
+            await context.SaveReviewForm(productId, GetDataResourceJson("create-category-5-savereviewform.json", parameters));
 
-            var total = 0;
+            return productId;
         }
 
-        public static void Analyze3()
+        public static async Task CreateSubmissions()
         {
-            var context = CreateAuthenticatedContext();
+            var context = await CreateAuthenticatedContext();
             var categoryId = 4332;
 
-            var root = context.GetSubmissionPage(categoryId).DocumentNode;
+            var root = (await context.GetSubmissionPage(categoryId)).DocumentNode;
             
             var controlGroups = root.SelectNodes(
                 @"//div[contains(@class, 'ctrlHolder')]")
@@ -445,16 +447,21 @@ namespace Jacere.Crawler.Recipes
             var otherHiddenFields = root.SelectNodes(@"//form/input[@type='hidden'][not(contains(@name, 'CustomField'))]")
                 .Select(x => new KeyValuePair<string, string>(x.GetAttributeValue("name", ""), x.GetAttributeValue("value", ""))).ToList();
             
-            var items = new List<Item>();
+            //var items = new List<Item>();
 
-            // sample
-            items.Add(JsonConvert.DeserializeObject<Item>(
-                File.ReadAllText(@"C:\tmp\scrape\recipes\chunk-46\item-241046.json")));
+            //// sample
+            //items.Add(JsonConvert.DeserializeObject<Item>(
+            //    File.ReadAllText(@"C:\tmp\scrape\recipes\chunk-46\item-13000.json")));
 
-            foreach (var item in items)
+            var items = LoadAllItems();//.Take(100);
+
+            var submissionCount = 0;
+
+            await items.ParallelForEachAsync(async item =>
             {
                 var data = new List<KeyValuePair<string, string>>();
 
+                // temporarily do this without images
                 item.ImageName = null;
 
                 data.AddRange(GetPairs(groups["Title"], item.Title));
@@ -476,15 +483,22 @@ namespace Jacere.Crawler.Recipes
                 data.AddRange(GetPairs(groups["Is the total time known?"], !string.IsNullOrWhiteSpace(item.TotalTime) ? "Yes" : "No"));
                 if (!string.IsNullOrWhiteSpace(item.TotalTime))
                 {
-                    data.AddRange(GetPairs(groups["Total Time"], item.PrepTime));
+                    data.AddRange(GetPairs(groups["Total Time"], item.TotalTime));
                 }
                 data.AddRange(GetPairs(groups["URL"], $"http://allrecipes.com/recipe/{item.Id}"));
 
                 data.AddRange(controlLabels);
                 data.AddRange(otherHiddenFields);
 
-                context.Submit(categoryId, data);
-            }
+                await context.Submit(categoryId, data);
+
+                Interlocked.Increment(ref submissionCount);
+                
+                Console.Write($"submitted {submissionCount}\r");
+            }, maxDegreeOfParalellism: 8);
+
+            Console.Write($"{new string(' ', 80)}\r");
+            Console.WriteLine($"submitted {submissionCount}");
         }
 
         private static IEnumerable<KeyValuePair<string, string>> GetPairs(IReadOnlyList<KeyValuePair<string, string>> group, string value = null)
@@ -494,6 +508,21 @@ namespace Jacere.Crawler.Recipes
             {
                 yield return pair;
             }
+        }
+
+        internal static IEnumerable<Item> LoadAllItems()
+        {
+            return Directory.EnumerateDirectories(StorageRoot)
+                .SelectMany(dir => Directory.EnumerateFiles(dir, "*.json")
+                    .Select(file =>
+                    {
+                        var item = JsonConvert.DeserializeObject<Item>(File.ReadAllText(file));
+                        if (item.ImageName != null)
+                        {
+                            item.ImageName = Path.Combine(dir, item.ImageName);
+                        }
+                        return item;
+                    }));
         }
 
         public static void Analyze()

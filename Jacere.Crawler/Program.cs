@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Threading.Tasks;
 
 namespace Jacere.Crawler
 {
@@ -7,7 +8,11 @@ namespace Jacere.Crawler
         static void Main(string[] args)
         {
             //Recipes.Recipes.Start();
-            Recipes.Recipes.Analyze3();
+
+            Task.Run(async () =>
+            {
+                await Recipes.Recipes.CreateSubmissions();
+            }).GetAwaiter().GetResult();
         }
     }
 }

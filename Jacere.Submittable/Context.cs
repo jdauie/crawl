@@ -1,8 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using System.Net;
+using System.Net.Http;
+using System.Text;
+using System.Threading.Tasks;
 using HtmlAgilityPack;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -11,171 +12,154 @@ namespace Jacere.Submittable
 {
     public class Context
     {
-        private readonly string _baseUrl;
-        private string _sessionCookie;
+        private readonly Uri _baseUri;
+        private List<string> _sessionCookie;
 
-        public Context(string baseUrl)
+        private Context(string baseUrl)
         {
-            _baseUrl = baseUrl.TrimEnd('/');
+            _baseUri = new Uri(baseUrl);
         }
 
-        public void Login(string user, string password)
+        public static async Task<Context> Login(string baseUrl, string user, string password)
         {
-            var request = WebRequest.Create($"{_baseUrl}/account/ajaxlogin");
-            request.Method = "POST";
-            request.ContentType = "application/json";
-            using (var streamWriter = new StreamWriter(request.GetRequestStream()))
+            var context = new Context(baseUrl);
+            await context.DoPost("/account/ajaxlogin", new StringContent(JsonConvert.SerializeObject(new {
+                UserName = user,
+                Password = password,
+            }), Encoding.UTF8, "application/json"), response =>
             {
-                streamWriter.Write(JsonConvert.SerializeObject(new
+                context._sessionCookie = response.Headers.GetValues("Set-Cookie").ToList();
+            });
+            return context;
+        }
+
+        public async Task<HtmlDocument> GetSubmissionPage(int categoryId)
+        {
+            return await GetHtmlDocument($"/submit/{categoryId}");
+        }
+
+        public async Task<int> EditCategory(object data)
+        {
+            var form = new FormUrlEncodedContent(GetProperties(data));
+            var categoryId = 0;
+
+            await DoPost("/categories/edit", form, async response =>
+            {
+                categoryId = int.Parse(await response.Content.ReadAsStringAsync());
+            });
+
+            return categoryId;
+        }
+
+        private async Task DoGet(string url, Func<HttpResponseMessage, Task> action = null)
+        {
+            using (var handler = new HttpClientHandler { UseCookies = false })
+            using (var client = new HttpClient(handler) { BaseAddress = _baseUri })
+            {
+                client.DefaultRequestHeaders.Add("Cookie", _sessionCookie);
+                var response = await client.GetAsync(url);
+                response.EnsureSuccessStatusCode();
+
+                if (action != null)
                 {
-                    UserName = user,
-                    Password = password,
-                }));
+                    await action(response);
+                }
             }
+        }
 
-            using (var response = request.GetResponse())
+        private async Task DoPost(string url, HttpContent content, Action<HttpResponseMessage> action)
+        {
+            using (var handler = new HttpClientHandler { UseCookies = false })
+            using (var client = new HttpClient(handler) { BaseAddress = _baseUri })
             {
-                _sessionCookie = response.Headers["Set-Cookie"];
+                if (_sessionCookie != null)
+                {
+                    client.DefaultRequestHeaders.Add("Cookie", _sessionCookie);
+                }
+                var response = await client.PostAsync(url, content);
+                response.EnsureSuccessStatusCode();
+
+                action(response);
             }
         }
 
-        public HtmlDocument GetSubmissionPage(int categoryId)
+        private async Task DoPost(string url, HttpContent content, Func<HttpResponseMessage, Task> action = null)
         {
-            return GetHtmlDocument($"{_baseUrl}/submit/{categoryId}");
-        }
-
-        public int EditCategory(object data)
-        {
-            var request = CreateHttpRequestWithCookie($"{_baseUrl}/categories/edit");
-            request.Method = "POST";
-            request.ContentType = "application/x-www-form-urlencoded";
-            using (var streamWriter = new StreamWriter(request.GetRequestStream()))
+            using (var handler = new HttpClientHandler { UseCookies = false })
+            using (var client = new HttpClient(handler) { BaseAddress = _baseUri })
             {
-                streamWriter.Write(GetFormUrlEncoded(data));
-            }
+                client.DefaultRequestHeaders.Add("Cookie", _sessionCookie);
+                var response = await client.PostAsync(url, content);
+                response.EnsureSuccessStatusCode();
 
-            var response = request.GetResponse();
-            using (var reader = new StreamReader(response.GetResponseStream()))
+                if (action != null)
+                {
+                    await action(response);
+                }
+            }
+        }
+
+        private async Task DoPostJson(string url, object data)
+        {
+            var content = new StringContent(JsonConvert.SerializeObject(data), Encoding.UTF8, "application/json");
+            await DoPost(url, content);
+        }
+
+        public async Task Submit(int categoryId, IEnumerable<KeyValuePair<string, string>> data)
+        {
+            var form = new MultipartFormDataContent();
+            foreach (var pair in data)
             {
-                return int.Parse(reader.ReadToEnd());
+                form.Add(new StringContent(pair.Value), pair.Key);
             }
+            await DoPost($"/submit/{categoryId}/submission", form);
         }
 
-        public void Submit(int categoryId, IEnumerable<KeyValuePair<string, string>> data)
+        public async Task SaveProductPrices(int id, object data)
         {
-            var boundary = "----WebKitFormBoundaryIBTW73IE8eiDP8ux";
+            await DoPostJson($"/categories/saveproductprices/{id}", data);
+        }
 
-            var request = CreateHttpRequestWithCookie($"{_baseUrl}/submit/{categoryId}/submission");
-            request.Method = "POST";
-            request.ContentType = $"multipart/form-data; boundary={boundary}";
-            using (var streamWriter = new StreamWriter(request.GetRequestStream()))
+        public async Task SavePaymentAddons(int id, object data)
+        {
+            await DoPostJson($"/categories/savepaymentaddons/{id}", data);
+        }
+
+        public async Task SaveForm(int id, object data)
+        {
+            await DoPostJson($"/categories/saveform/{id}", data);
+        }
+
+        public async Task SaveReviewForm(int id, object data)
+        {
+            await DoPostJson($"/categories/savereviewform/{id}", data);
+        }
+
+        public async Task<HtmlDocument> GetHtmlDocument(string url)
+        {
+            HtmlNode.ElementsFlags.Remove("form");
+            var doc = new HtmlDocument();
+
+            await DoGet(url, async response =>
             {
-                streamWriter.Write(GetMultipartFormDataEncoded(data, boundary));
-            }
-            
-            using (var response = request.GetResponse())
-            {
-                // ignore
-            }
+                doc.Load(await response.Content.ReadAsStreamAsync());
+            });
+
+            return doc;
         }
 
-        public void SaveProductPrices(int id, object data)
-        {
-            PostJsonIgnoreResponse($"{_baseUrl}/categories/saveproductprices/{id}", data);
-        }
-
-        public void SavePaymentAddons(int id, object data)
-        {
-            PostJsonIgnoreResponse($"{_baseUrl}/categories/savepaymentaddons/{id}", data);
-        }
-
-        public void SaveForm(int id, object data)
-        {
-            PostJsonIgnoreResponse($"{_baseUrl}/categories/saveform/{id}", data);
-        }
-
-        public void SaveReviewForm(int id, object data)
-        {
-            PostJsonIgnoreResponse($"{_baseUrl}/categories/savereviewform/{id}", data);
-        }
-
-        private void PostJsonIgnoreResponse(string url, object data)
-        {
-            var request = CreateHttpRequestWithCookie(url);
-            request.Method = "POST";
-            request.ContentType = "application/json";
-            using (var streamWriter = new StreamWriter(request.GetRequestStream()))
-            {
-                streamWriter.Write(JsonConvert.SerializeObject(data));
-            }
-
-            using (request.GetResponse())
-            {
-                // doesn't matter
-            }
-        }
-
-        public HtmlDocument GetHtmlDocument(string url)
-        {
-            var request = CreateHttpRequestWithCookie(url);
-            using (var response = request.GetResponse())
-            {
-                var doc = new HtmlDocument();
-                HtmlNode.ElementsFlags.Remove("form");
-                doc.Load(response.GetResponseStream());
-                return doc;
-            }
-        }
-
-        private HttpWebRequest CreateHttpRequestWithCookie(string url)
-        {
-            var request = WebRequest.Create(url);
-
-            if (_sessionCookie == null)
-            {
-                throw new InvalidOperationException("no session");
-            }
-
-            request.Headers["Cookie"] = _sessionCookie;
-
-            return (HttpWebRequest)request;
-        }
-
-        private static IEnumerable<KeyValuePair<string, object>> GetProperties(object obj)
+        private static IEnumerable<KeyValuePair<string, string>> GetProperties(object obj)
         {
             if (obj is JObject)
             {
                 return (obj as JObject)
                     .Properties()
-                    .Select(x => new KeyValuePair<string, object>(x.Name, x.Value));
+                    .Select(x => new KeyValuePair<string, string>(x.Name, Convert.ToString(x.Value)));
             }
             return obj
                 .GetType()
                 .GetProperties()
-                .Select(x => new KeyValuePair<string, object>(x.Name, x.GetValue(obj)));
-        }
-
-        private static string GetFormUrlEncoded(object data)
-        {
-            return string.Join("&",
-                GetProperties(data).Select(x => $"{Encode(x.Key)}={Encode(Convert.ToString(x.Value))}"));
-        }
-
-        private static string GetMultipartFormDataEncoded(IEnumerable<KeyValuePair<string, string>> data, string boundary)
-        {
-            var parts = data.Select(x => string.Format(
-                "{0}Content-Disposition: form-data; name=\"{1}\"{0}{0}{2}{0}",
-                "\r\n", x.Key, x.Value)).ToList();
-            parts.Insert(0, "");
-            parts.Add("--");
-            return string.Join($"--{boundary}", parts);
-        }
-
-        private static string Encode(string data)
-        {
-            return string.IsNullOrEmpty(data)
-                ? string.Empty
-                : Uri.EscapeDataString(data).Replace("%20", "+");
+                .Select(x => new KeyValuePair<string, string>(x.Name, Convert.ToString(x.GetValue(obj))));
         }
     }
 }

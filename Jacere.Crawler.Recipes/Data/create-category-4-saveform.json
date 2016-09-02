@@ -641,7 +641,7 @@
     "FieldTypeName": "Text Box",
     "FieldIndex": 8,
     "TemplateName": "tpl_SingleLineText",
-    "Required": true,
+    "Required": false,
     "RequiredReadonly": false,
     "Blind": false,
     "PublicView": false,
