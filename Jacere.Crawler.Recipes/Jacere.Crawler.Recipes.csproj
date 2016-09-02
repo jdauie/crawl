@@ -62,18 +62,7 @@
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
-    <EmbeddedResource Include="Data\create-category-1-edit.json" />
-    <EmbeddedResource Include="Data\create-category-2-saveproductprices.json" />
-    <EmbeddedResource Include="Data\create-category-3-savepaymentaddons.json" />
-    <EmbeddedResource Include="Data\create-category-4-saveform.json" />
-    <EmbeddedResource Include="Data\create-category-5-savereviewform.json" />
     <None Include="packages.config" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\Jacere.Submittable\Jacere.Submittable.csproj">
-      <Project>{17fc08e4-cc8f-4065-8e33-181831d951c4}</Project>
-      <Name>Jacere.Submittable</Name>
-    </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 

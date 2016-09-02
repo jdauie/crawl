@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Threading.Tasks;
 
 namespace Jacere.Crawler
 {
@@ -7,12 +6,14 @@ namespace Jacere.Crawler
     {
         static void Main(string[] args)
         {
-            //Recipes.Recipes.Start();
-
-            Task.Run(async () =>
+            // keep-alive
+            if (NativeMethods.SetThreadExecutionState(
+                NativeMethods.ES_CONTINUOUS | NativeMethods.ES_SYSTEM_REQUIRED) == 0)
             {
-                await Recipes.Recipes.CreateSubmissions();
-            }).GetAwaiter().GetResult();
+                throw new Exception("failed to set execution state");
+            }
+
+            Recipes.Recipes.Start();
         }
     }
 }
