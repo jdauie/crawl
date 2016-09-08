@@ -13,7 +13,8 @@ namespace Jacere.Crawler
                 throw new Exception("failed to set execution state");
             }
 
-            Recipes.Recipes.Start();
+            //Recipes.Recipes.Start();
+            Stories.Stories.Start();
         }
     }
 }

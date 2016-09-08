@@ -55,6 +55,10 @@
       <Project>{5e92f5f4-e88d-4808-bf40-f3626ee8dd3d}</Project>
       <Name>Jacere.Crawler.Recipes</Name>
     </ProjectReference>
+    <ProjectReference Include="..\Jacere.Crawler.Stories\Jacere.Crawler.Stories.csproj">
+      <Project>{516b4ad6-b875-4f5c-8423-67f079f5cc7b}</Project>
+      <Name>Jacere.Crawler.Stories</Name>
+    </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 

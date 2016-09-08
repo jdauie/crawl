@@ -10,29 +10,8 @@ using System.Threading;
 
 namespace Jacere.Crawler.Recipes
 {
-    /// <summary>
-    /// get categories and auth token
-    /// http://allrecipes.com/recipes/?grouping=all
-    /// 
-    /// if the items were already cached, load them, otherwise...
-    /// 
-    ///     for each category, probe for last page (with counter for unbounded progress)
-    ///     https://apps.allrecipes.com/v1/assets/hub-feed?id=${categoryId}&pageNumber=${pageNumber}&isSponsored=true&sortType=p
-    ///     
-    ///     get all pages (with progress)
-    /// 
-    ///     merge list of unique cards where card.id && card.itemType !== 'Video'
-    /// 
-    /// for each card, get the detail view and the image (if any)
-    /// http://allrecipes.com/recipe/${item.id}
-    /// http://images.media-allrecipes.com/userphotos/600x600/${item.image}
-    /// 
-    /// retry a few times, but if detail isn't available, drop the item?
-    /// if image isn't available, ?
-    /// </summary>
     public class Recipes
     {
-        private const string BaseUrl = @"http://localjournal.submishmash.com";
         private const string StorageRoot = @"C:/tmp/scrape/recipes";
 
         private const int CrawlDelay = 500;
