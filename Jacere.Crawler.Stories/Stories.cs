@@ -60,7 +60,7 @@ namespace Jacere.Crawler.Stories
             {
                 Title = chapterTitleNode?.InnerText,
                 Note = noteNode?.SelectSingleNode(@"./p").InnerText,
-                Components = articleNode.SelectNodes(@"./div[@class='cm-component cm-text-container'][@id]/div").Select(x => x.InnerText).ToList(),
+                Components = articleNode.SelectNodes(@"./div[@class='cm-component cm-text-container'][@id]/div")?.Select(x => x.InnerText).ToList(),
                 Published = publishedText != null ? (DateTime?)DateTime.ParseExact(publishedText, "MMMM dd, yyyy", DateTimeFormatInfo.CurrentInfo) : null,
                 Updated = updatedText != null ? (DateTime?)DateTime.ParseExact(updatedText, "MMMM dd, yyyy", DateTimeFormatInfo.CurrentInfo) : null,
             };
@@ -68,7 +68,19 @@ namespace Jacere.Crawler.Stories
 
         private static Item GetItem(string slug)
         {
-            var root = GetHtmlDocument($@"http://storybird.com/chapters/{slug}/").DocumentNode;
+            HtmlNode root;
+            try
+            {
+                root = GetHtmlDocument($@"http://storybird.com/chapters/{slug}/").DocumentNode;
+            }
+            catch(WebException e)
+            {
+                if ((e.Response as HttpWebResponse).StatusCode == HttpStatusCode.NotFound)
+                {
+                    return null;
+                }
+                throw;
+            }
             var tagNode = root.SelectSingleNode(@"//article[@class='sidebar-article']/h2[text()='Tags:']")?.ParentNode;
 
             var item = new Item
@@ -94,13 +106,18 @@ namespace Jacere.Crawler.Stories
             }
             else
             {
-                var chapters = root.SelectNodes(@"//div[@class='ma20 mb40']//a").Select(x => int.Parse(x.GetAttributeValue("href", "")
-                    .Split(new[] {'/'}, StringSplitOptions.RemoveEmptyEntries).Last())).ToList();
+                var chapters = root.SelectNodes(@"//div[@class='ma20 mb40']//a")?.Select(x => x.GetAttributeValue("href", ""))
+                    .Where(x => !x.Contains("?token="))
+                    .Select(x => int.Parse(x.Split(new[] {'/'}, StringSplitOptions.RemoveEmptyEntries).Skip(2).FirstOrDefault() ?? "-1"))
+                    .Where(x => x != -1).ToList();
 
-                foreach (var chapter in chapters)
+                if (chapters != null)
                 {
-                    var chapterNode = GetHtmlDocument($@"http://storybird.com/chapters/{slug}/{chapter}/").DocumentNode;
-                    item.Chapters.Add(GetChapter(chapterNode));
+                    foreach (var chapter in chapters)
+                    {
+                        var chapterNode = GetHtmlDocument($@"http://storybird.com/chapters/{slug}/{chapter}/").DocumentNode;
+                        item.Chapters.Add(GetChapter(chapterNode));
+                    }
                 }
             }
 
@@ -229,6 +246,11 @@ namespace Jacere.Crawler.Stories
                     }
 
                     var item = GetItem(slug);
+
+                    if (item == null)
+                    {
+                        continue;
+                    }
                     
                     var imagePath = Path.Combine(storageChunkPath, $"{slug}.jpeg");
                     if (!File.Exists(imagePath))
