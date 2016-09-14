@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 
-namespace Jacere.Crawler.Stories
+namespace Jacere.Crawler.Core
 {
     public class ConsoleProgress : IDisposable
     {

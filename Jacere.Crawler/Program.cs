@@ -14,7 +14,8 @@ namespace Jacere.Crawler
             }
 
             //Recipes.Recipes.Start();
-            Stories.Stories.Start();
+            //Stories.Stories.Start();
+            Poems.Poems.Start();
         }
     }
 }

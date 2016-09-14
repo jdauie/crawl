@@ -4,17 +4,15 @@
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>{6BEE78F2-4169-41BF-A307-04E8BA51F3C2}</ProjectGuid>
-    <OutputType>Exe</OutputType>
+    <ProjectGuid>{FF9B6353-376C-429D-8675-AEAC8D749978}</ProjectGuid>
+    <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>Jacere.Crawler</RootNamespace>
-    <AssemblyName>Jacere.Crawler</AssemblyName>
+    <RootNamespace>Jacere.Crawler.Core</RootNamespace>
+    <AssemblyName>Jacere.Crawler.Core</AssemblyName>
     <TargetFrameworkVersion>v4.5.2</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
-    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
-    <PlatformTarget>AnyCPU</PlatformTarget>
     <DebugSymbols>true</DebugSymbols>
     <DebugType>full</DebugType>
     <Optimize>false</Optimize>
@@ -24,7 +22,6 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
-    <PlatformTarget>AnyCPU</PlatformTarget>
     <DebugType>pdbonly</DebugType>
     <Optimize>true</Optimize>
     <OutputPath>bin\Release\</OutputPath>
@@ -43,26 +40,8 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="NativeMethods.cs" />
-    <Compile Include="Program.cs" />
+    <Compile Include="ConsoleProgress.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="App.config" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\Jacere.Crawler.Poems\Jacere.Crawler.Poems.csproj">
-      <Project>{98172adc-a698-4868-a7d1-596fc4189504}</Project>
-      <Name>Jacere.Crawler.Poems</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\Jacere.Crawler.Recipes\Jacere.Crawler.Recipes.csproj">
-      <Project>{5e92f5f4-e88d-4808-bf40-f3626ee8dd3d}</Project>
-      <Name>Jacere.Crawler.Recipes</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\Jacere.Crawler.Stories\Jacere.Crawler.Stories.csproj">
-      <Project>{516b4ad6-b875-4f5c-8423-67f079f5cc7b}</Project>
-      <Name>Jacere.Crawler.Stories</Name>
-    </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 

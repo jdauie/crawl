@@ -7,6 +7,7 @@ using System.Net;
 using System.Text.RegularExpressions;
 using System.Threading;
 using HtmlAgilityPack;
+using Jacere.Crawler.Core;
 using Newtonsoft.Json;
 
 namespace Jacere.Crawler.Stories
