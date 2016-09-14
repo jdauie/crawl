@@ -51,10 +51,13 @@ namespace Jacere.Crawler.Poems
 
                         progress.Increment();
 
-                        var items = root.SelectNodes(@"//table[@class='poems-listing']//td[@class='title']/a[starts-with(@href, '/poem/')]")
+                        var items = root.SelectNodes(@"//table[@class='poems-listing']//td[@class='title']/a[starts-with(@href, '/poem/')]")?
                             .Select(x => x.GetAttributeValue("href", ""));
 
-                        urls.AddRange(items);
+                        if (items != null)
+                        {
+                            urls.AddRange(items);
+                        }
 
                         if (root.SelectSingleNode(@"//div[@class='pagination']//li[@class='next']/a") == null)
                         {
