@@ -84,11 +84,70 @@ namespace Jacere.Crawler.Poems
         {
             Directory.CreateDirectory(StorageRoot);
 
-            var poemUrls = GetPages();
+            var itemsPath = Path.Combine(StorageRoot, "items.json");
 
-            var slugsPath = Path.Combine(StorageRoot, "slugs.json");
+            if (!File.Exists(itemsPath))
+            {
+                var poemUrls = GetPages();
 
-            File.WriteAllText(slugsPath, JsonConvert.SerializeObject(poemUrls));
+                File.WriteAllText(itemsPath, JsonConvert.SerializeObject(poemUrls));
+            }
+
+            var urls = JsonConvert.DeserializeObject<List<string>>(File.ReadAllText(itemsPath));
+
+            var slugs = urls.Select(x => x.Trim('/').Split('/').Last()).ToList();
+
+            using (var progress = new ConsoleProgress("items", urls.Count))
+            {
+                var i = 0;
+                while (i < slugs.Count)
+                {
+                    var slug = slugs[i];
+
+                    var chunkId = slug.GetHashCode() % 100;
+                    var storageChunkPath = Path.Combine(StorageRoot, $"chunk-{chunkId}");
+                    Directory.CreateDirectory(storageChunkPath);
+                    var itemPath = Path.Combine(storageChunkPath, $"{slug}.json");
+
+                    if (!File.Exists(itemPath))
+                    {
+                        try
+                        {
+                            var root = GetHtmlDocument($@"http://www.poemhunter.com/poem/{slug}").DocumentNode;
+
+                            var author = root.SelectSingleNode(@"//meta[@itemprop='author']").GetAttributeValue("content", "");
+                            var title = root.SelectSingleNode(@"//h1[@itemprop='name'][starts-with(@class, 'title')]").InnerText;
+                            
+                            var poem = new
+                            {
+                                Slug = slug,
+                                Author = author,
+                                Title = title.Substring(0, title.IndexOf(" - Poem by ", StringComparison.InvariantCulture)),
+                                IsFamilyFriendly = root.SelectSingleNode(@"//meta[@itemprop='isFamilyFriendly']").GetAttributeValue("content", "") == "true",
+                                Html = root.SelectSingleNode(@"//div[@class='KonaBody']//p").InnerHtml,
+                            };
+
+                            File.WriteAllText(itemPath, JsonConvert.SerializeObject(poem));
+                        }
+                        catch (WebException e)
+                        {
+                            if (new [] {
+                                HttpStatusCode.InternalServerError,
+                                HttpStatusCode.GatewayTimeout,
+                            }.Contains((e.Response as HttpWebResponse).StatusCode))
+                            {
+                                // retry
+                                continue;
+                            }
+                            throw;
+                        }
+                    }
+
+                    progress.Increment();
+
+                    ++i;
+                }
+            }
         }
     }
 }
