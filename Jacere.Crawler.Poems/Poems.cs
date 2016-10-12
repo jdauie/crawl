@@ -5,7 +5,6 @@ using System.Linq;
 using System.Net;
 using System.Text;
 using System.Threading;
-using System.Threading.Tasks;
 using HtmlAgilityPack;
 using Jacere.Crawler.Core;
 using Newtonsoft.Json;
@@ -32,7 +31,7 @@ namespace Jacere.Crawler.Poems
             using (var response = request.GetResponse())
             {
                 var doc = new HtmlDocument();
-                doc.Load(response.GetResponseStream());
+                doc.Load(response.GetResponseStream(), Encoding.UTF8);
                 return doc;
             }
         }
@@ -109,7 +108,9 @@ namespace Jacere.Crawler.Poems
                     Directory.CreateDirectory(storageChunkPath);
                     var itemPath = Path.Combine(storageChunkPath, $"{slug}.json");
 
-                    if (!File.Exists(itemPath))
+                    var exists = File.Exists(itemPath);
+
+                    if (!exists)
                     {
                         try
                         {
@@ -134,6 +135,7 @@ namespace Jacere.Crawler.Poems
                             if (new [] {
                                 HttpStatusCode.InternalServerError,
                                 HttpStatusCode.GatewayTimeout,
+                                HttpStatusCode.ServiceUnavailable,
                             }.Contains((e.Response as HttpWebResponse).StatusCode))
                             {
                                 // retry
@@ -143,7 +145,7 @@ namespace Jacere.Crawler.Poems
                         }
                     }
 
-                    progress.Increment();
+                    progress.Increment(exists);
 
                     ++i;
                 }

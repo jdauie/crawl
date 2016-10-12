@@ -17,6 +17,7 @@ namespace Jacere.Crawler.Core
         private readonly Dictionary<string, int> _counts;
         private readonly Task _task;
         private int _progressCount;
+        private int _skipCount;
         private bool _dirty;
         private bool _disposing;
 
@@ -28,6 +29,7 @@ namespace Jacere.Crawler.Core
             _showRate = showRate;
             _counts = new Dictionary<string, int>();
             _progressCount = 0;
+            _skipCount = 0;
             _dirty = false;
             _disposing = false;
 
@@ -46,7 +48,7 @@ namespace Jacere.Crawler.Core
             }
         }
 
-        private IEnumerable<string> GetRemainingTimeEstimate(int progressCount)
+        private IEnumerable<string> GetRemainingTimeEstimate(int progressCount, int skipCount)
         {
             var elapsed = DateTime.UtcNow - _startTime;
             var itemsPerMinute = (int)(progressCount / elapsed.TotalMinutes);
@@ -55,10 +57,10 @@ namespace Jacere.Crawler.Core
             {
                 parts.Add($"{itemsPerMinute} items/m");
             }
-            if (_progressCount <= _totalCount)
+            if (progressCount <= _totalCount)
             {
-                var remainingSeconds = elapsed.TotalSeconds * (_totalCount - progressCount) / progressCount;
-                parts.Add($"{TimeSpan.FromSeconds(remainingSeconds):dd.hh:mm:ss} remaining");
+                var remainingSeconds = elapsed.TotalSeconds * ((_totalCount - skipCount) - (progressCount - skipCount)) / (progressCount - skipCount);
+                parts.Add($@"{TimeSpan.FromSeconds(remainingSeconds):dd\.hh\:mm\:ss} remaining");
             }
             else
             {
@@ -67,9 +69,13 @@ namespace Jacere.Crawler.Core
             return parts;
         }
 
-        public void Increment()
+        public void Increment(bool skipped = false)
         {
             Interlocked.Increment(ref _progressCount);
+            if (skipped)
+            {
+                Interlocked.Increment(ref _skipCount);
+            }
             _dirty = true;
         }
 
@@ -104,6 +110,7 @@ namespace Jacere.Crawler.Core
 
         private void Write()
         {
+            var skipCount = _skipCount;
             var progressCount = _progressCount;
             var additionalParts = new List<string>();
 
@@ -119,7 +126,7 @@ namespace Jacere.Crawler.Core
 
             if (_totalCount > 0)
             {
-                additionalParts.AddRange(GetRemainingTimeEstimate(progressCount));
+                additionalParts.AddRange(GetRemainingTimeEstimate(progressCount, skipCount));
             }
             var additionalInfo = additionalParts.Any()
                 ? $"({string.Join(", ", additionalParts)})"
@@ -141,7 +148,7 @@ namespace Jacere.Crawler.Core
             var totalTime = DateTime.UtcNow - _startTime;
 
             Console.Write($"{new string(' ', 80)}\r");
-            Console.WriteLine($"{_title}: {_progressCount} in {totalTime:dd.hh:mm:ss}");
+            Console.WriteLine($@"{_title}: {_progressCount} in {totalTime:dd\.hh\:mm\:ss}");
         }
     }
 }
