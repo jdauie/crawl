@@ -1,10 +1,15 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Reflection;
+using ManyConsole;
 
 namespace Jacere.Crawler
 {
     class Program
     {
-        static void Main(string[] args)
+        private static int Main(string[] args)
         {
             // keep-alive
             if (NativeMethods.SetThreadExecutionState(
@@ -13,9 +18,20 @@ namespace Jacere.Crawler
                 throw new Exception("failed to set execution state");
             }
 
-            //Recipes.Recipes.Start();
-            //Stories.Stories.Start();
-            Poems.Poems.Start();
+            var commands = GetCommands();
+            return ConsoleCommandDispatcher.DispatchCommand(commands, args, Console.Out);
+        }
+
+        public static IEnumerable<ConsoleCommand> GetCommands()
+        {
+            var dir = Path.GetDirectoryName(Assembly.GetEntryAssembly().Location);
+            var files = Directory.GetFiles(dir, $"{typeof(Program).Namespace}.*.dll");
+
+            return new[]
+            {
+                Assembly.GetAssembly(typeof(Program)),
+            }.Concat(files.Select(Assembly.LoadFile))
+                .SelectMany(ConsoleCommandDispatcher.FindCommandsInAssembly);
         }
     }
 }
