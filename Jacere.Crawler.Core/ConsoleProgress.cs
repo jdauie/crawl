@@ -12,10 +12,10 @@ namespace Jacere.Crawler.Core
 
         private readonly string _title;
         private readonly DateTime _startTime;
-        private readonly int _totalCount;
         private readonly bool _showRate;
         private readonly Dictionary<string, int> _counts;
         private readonly Task _task;
+        private int _totalCount;
         private int _progressCount;
         private int _skipCount;
         private bool _dirty;
@@ -30,7 +30,7 @@ namespace Jacere.Crawler.Core
             _counts = new Dictionary<string, int>();
             _progressCount = 0;
             _skipCount = 0;
-            _dirty = false;
+            _dirty = true;
             _disposing = false;
 
             _task = UpdateDisplay();
@@ -67,6 +67,12 @@ namespace Jacere.Crawler.Core
                 parts.Add("unknown time remaining");
             }
             return parts;
+        }
+
+        public void SetTotal(int count)
+        {
+            Interlocked.Exchange(ref _totalCount, count);
+            _dirty = true;
         }
 
         public void Increment(bool skipped = false)
@@ -124,7 +130,7 @@ namespace Jacere.Crawler.Core
                 }
             }
 
-            if (_totalCount > 0)
+            if (_totalCount > 0 && progressCount > 0)
             {
                 additionalParts.AddRange(GetRemainingTimeEstimate(progressCount, skipCount));
             }
