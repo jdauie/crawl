@@ -62,22 +62,20 @@ namespace Jacere.Crawler.Poems
 
         private async Task CrawlPoetSlugs()
         {
-            var basePagingUrl = "/p/t/l.asp";
-            var nextPage = $"{basePagingUrl}?a=0&l=All&cinsiyet=&Populer_mi=&Classicmi=&Dogum_Tarihi_yil=&Dogum_Yeri=&p=1";
-
             using (var progress = new ConsoleProgress("poets"))
             {
-                while (nextPage != null)
+                for (var i = 1;; i++)
                 {
+                    var nextPage = $"/p/t/l.asp?a=0&l=All&cinsiyet=&Populer_mi=&Classicmi=&Dogum_Tarihi_yil=&Dogum_Yeri=&p={i}";
                     var root = (await GetHtmlDocument(nextPage, Encoding.UTF8)).DocumentNode;
 
-                    var lastPage = int.Parse(
-                        root.SelectSingleNode(@"//div[contains(@class, 'pagination')]//li[last()]/a").InnerText);
+                    var lastPage = root.Select(@"//div[contains(@class, 'pagination')]//li[last()]/a")
+                        .First().GetValueInt();
 
                     progress.SetTotal(lastPage);
 
-                    var currentSlugs = root.SelectNodes(@"//ol[contains(@class, 'poets-grid')]//a[@class='name']")
-                        .Select(x => x.GetAttributeValue("href", null).Trim('/'));
+                    var currentSlugs = root.Select(@"//ol[contains(@class, 'poets-grid')]//a[@class='name']")
+                        .Select(x => x.GetAttribute("href").Trim('/'));
 
                     foreach (var slug in currentSlugs)
                     {
@@ -89,15 +87,12 @@ namespace Jacere.Crawler.Poems
                         });
                     }
 
-                    nextPage = root.SelectSingleNode(@"//div[contains(@class, 'pagination')]//li[@class='next']/a")
-                        ?.GetAttributeValue("href", null);
-
-                    if (nextPage != null)
-                    {
-                        nextPage = $"{basePagingUrl}{nextPage}";
-                    }
-
                     progress.Increment();
+
+                    if (!root.Has(@"//div[contains(@class, 'pagination')]//li[@class='next']"))
+                    {
+                        break;
+                    }
 
                     await RandomDelay(TimeSpan.FromMilliseconds(DelayInterval));
                 }
@@ -114,30 +109,32 @@ namespace Jacere.Crawler.Poems
             {
                 foreach (var poet in poets)
                 {
-                    var nextPage = $@"/{poet.Slug}/poems";
-
-                    while (nextPage != null)
+                    for (var i = 1;; i++)
                     {
+                        var nextPage = $@"/{poet.Slug}/poems/page-{i}";
                         var root = (await GetHtmlDocument(nextPage, Encoding.UTF8)).DocumentNode;
 
-                        var currentSlugs = root.SelectNodes(@"//table[@class='poems']//td[@class='title']/a")
-                            ?.Select(x => x.GetAttributeValue("href", null).Trim('/').Split('/')[1]);
+                        var currentSlugs = root.Select(@"//table[@class='poems']//td[@class='title']/a")
+                            .Select(x => x.GetAttribute("href").Trim('/').Split('/')[1]).ToList();
 
-                        if (currentSlugs != null)
+                        if (currentSlugs.Any())
                         {
                             foreach (var slug in currentSlugs)
                             {
                                 _connection.Execute(@"
-                                    insert or ignore into poem (slug) values (@slug);
+                                    insert or ignore into poem (slug, poet) values (@slug, @poet);
                                 ", new
                                 {
                                     slug,
+                                    poet = poet.Slug,
                                 });
                             }
                         }
 
-                        nextPage = root.SelectSingleNode(@"//div[contains(@class, 'pagination')]//li[@class='next']/a")
-                            ?.GetAttributeValue("href", null);
+                        if (!root.Has(@"//div[contains(@class, 'pagination')]//li[@class='next']"))
+                        {
+                            break;
+                        }
 
                         await RandomDelay(TimeSpan.FromMilliseconds(DelayInterval));
                     }
@@ -149,49 +146,52 @@ namespace Jacere.Crawler.Poems
 
         private async Task CrawlPoemDetails()
         {
-            var poems = _connection.Query<string>(@"
-                select slug
+            var poems = _connection.Query<Poem>(@"
+                select slug, poet
                 from poem
             ").ToList();
 
             using (var progress = new ConsoleProgress("details", poems.Count))
             {
-                foreach (var poemSlug in poems)
+                foreach (var poem in poems)
                 {
-                    var root = (await GetHtmlDocument($@"http://www.poemhunter.com/poem/{poemSlug}", Encoding.UTF8)).DocumentNode;
+                    var root = (await GetHtmlDocument($@"http://www.poemhunter.com/poem/{poem.Slug}", Encoding.UTF8)).DocumentNode;
 
-                    var author = root.SelectSingleNode(@"//meta[@itemprop='author']")
-                        ?.GetAttributeValue("content", "");
+                    var author = root.Select(@"//meta[@itemprop='author']")
+                        .SingleOrDefault()?.GetAttribute("content");
 
                     if (author != null)
                     {
-                        var title =
-                            root.SelectSingleNode(@"//h1[@itemprop='name'][starts-with(@class, 'title')]").InnerText;
-                        title = title.Substring(0, title.IndexOf(" - Poem by ", StringComparison.InvariantCulture));
+                        var title = root.Select(@"//h1[@itemprop='name'][starts-with(@class, 'title')]")
+                            .Single().GetValue().Until(" - Poem by ");
                         var familyFriendly = root.SelectSingleNode(@"//meta[@itemprop='isFamilyFriendly']")
-                            .GetAttributeValue("content", "") == "true";
+                            .GetAttribute("content") == "true";
                         var html = root.SelectSingleNode(@"//div[@class='KonaBody']//p").InnerHtml;
 
                         _connection.Execute(@"
                             update poem set
-                                author = @author,
+                                poet = @poet,
                                 title = @title,
                                 familyfriendly = @familyFriendly,
                                 html = @html,
                                 retrieved = current_timestamp
-                            where slug = @poemSlug
-
-                            update poet set
-                                name = @author,
-                                retrieved = current_timestamp
-                            where slug = @poemSlug
-                        ", new
-                        {
-                            author,
+                            where slug = @slug
+                        ", new {
+                            poem.Poet,
                             title,
                             familyFriendly,
                             html,
-                            poemSlug,
+                            poem.Slug,
+                        });
+
+                        _connection.Execute(@"
+                            update poet set
+                                name = @author,
+                                retrieved = current_timestamp
+                            where slug = @slug
+                        ", new {
+                            author,
+                            poem.Slug,
                         });
                     }
                     else
@@ -203,9 +203,9 @@ namespace Jacere.Crawler.Poems
                         ");
                     }
 
-                    await RandomDelay(TimeSpan.FromMilliseconds(DelayInterval));
-
                     progress.Increment();
+
+                    await RandomDelay(TimeSpan.FromMilliseconds(DelayInterval));
                 }
             }
         }
