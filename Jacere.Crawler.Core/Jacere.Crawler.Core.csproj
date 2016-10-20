@@ -75,7 +75,9 @@
     <Compile Include="DataStorageContext.cs" />
     <Compile Include="DataContext.cs" />
     <Compile Include="ErrorHandlingConsoleCommand.cs" />
+    <Compile Include="IActiveRecord.cs" />
     <Compile Include="IDataStorageCommand.cs" />
+    <Compile Include="DbConnectionExtensions.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>

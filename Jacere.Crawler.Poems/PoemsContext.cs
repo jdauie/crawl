@@ -20,7 +20,7 @@ namespace Jacere.Crawler.Poems
             OpenStorage();
 
             _connection = OpenStorageConnection();
-                
+            
             var tableCreated = _connection.QuerySingle<bool>(@"
                 select count(*) from sqlite_master where type = 'table' and name = 'poet'
             ");
@@ -33,7 +33,9 @@ namespace Jacere.Crawler.Poems
             _connection.Execute(@"
                 create table poet (
                     slug nvarchar(100) unique not null,
-                    added datetime not null default current_timestamp
+                    added datetime not null default current_timestamp,
+                    name nvarchar(1000) unique,
+                    retrieved datetime
                 )
             ");
 
@@ -41,19 +43,20 @@ namespace Jacere.Crawler.Poems
                 create table poem (
                     slug nvarchar(100) unique not null,
                     added datetime not null default current_timestamp,
-                    author nvarchar(1000),
+                    poet nvarchar(100) not null,
                     title nvarchar(1000),
                     familyfriendly integer,
                     html nvarchar(1000000),
-                    retrieved datetime
+                    retrieved datetime,
+                    foreign key (poet) references poet(slug)
                 )
             ");
         }
 
         public async Task Crawl()
         {
-            //await CrawlPoetSlugs();
-            //await CrawlPoemSlugs();
+            await CrawlPoetSlugs();
+            await CrawlPoemSlugs();
             await CrawlPoemDetails();
         }
 
@@ -103,16 +106,15 @@ namespace Jacere.Crawler.Poems
 
         private async Task CrawlPoemSlugs()
         {
-            var poets = _connection.Query<string>(@"
-                select slug
-                from poet
+            var poets = _connection.Query<Poet>(@"
+                select * from poet
             ").ToList();
 
             using (var progress = new ConsoleProgress("poems", poets.Count))
             {
-                foreach (var poetSlug in poets)
+                foreach (var poet in poets)
                 {
-                    var nextPage = $@"/{poetSlug}/poems";
+                    var nextPage = $@"/{poet.Slug}/poems";
 
                     while (nextPage != null)
                     {
@@ -126,8 +128,8 @@ namespace Jacere.Crawler.Poems
                             foreach (var slug in currentSlugs)
                             {
                                 _connection.Execute(@"
-                                insert or ignore into poem (slug) values (@slug)
-                            ", new
+                                    insert or ignore into poem (slug) values (@slug);
+                                ", new
                                 {
                                     slug,
                                 });
@@ -170,12 +172,17 @@ namespace Jacere.Crawler.Poems
                             .GetAttributeValue("content", "") == "true";
                         var html = root.SelectSingleNode(@"//div[@class='KonaBody']//p").InnerHtml;
 
-                        _connection.Query<string>(@"
+                        _connection.Execute(@"
                             update poem set
                                 author = @author,
                                 title = @title,
                                 familyfriendly = @familyFriendly,
                                 html = @html,
+                                retrieved = current_timestamp
+                            where slug = @poemSlug
+
+                            update poet set
+                                name = @author,
                                 retrieved = current_timestamp
                             where slug = @poemSlug
                         ", new
@@ -189,7 +196,7 @@ namespace Jacere.Crawler.Poems
                     }
                     else
                     {
-                        _connection.Query<string>(@"
+                        _connection.Execute(@"
                             update poem set
                                 retrieved = current_timestamp
                             where slug = @poemSlug

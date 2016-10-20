@@ -65,6 +65,8 @@
     <Compile Include="PoemsContext.cs" />
     <Compile Include="PoemsCommand.cs" />
     <Compile Include="Poems.cs" />
+    <Compile Include="Poem.cs" />
+    <Compile Include="Poet.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>

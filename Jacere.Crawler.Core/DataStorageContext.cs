@@ -25,7 +25,7 @@ namespace Jacere.Crawler.Core
 
         protected IDbConnection OpenStorageConnection()
         {
-            var connection = new SQLiteConnection($@"Data Source={_databasePath};Version=3;");
+            var connection = new SQLiteConnection($@"Data Source={_databasePath};Version=3;foreign keys=true;");
             connection.Open();
             return connection;
         }
