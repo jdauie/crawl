@@ -11,7 +11,7 @@ namespace Jacere.Crawler.Poems
     internal class PoemsContext : DataStorageContext, IDisposable
     {
         private const string BaseUri = @"http://www.poemhunter.com/";
-        private const int DelayInterval = 500;
+        private const int DelayInterval = 100;
 
         private readonly IDbConnection _connection;
         
@@ -34,7 +34,7 @@ namespace Jacere.Crawler.Poems
                 create table poet (
                     slug nvarchar(100) unique not null,
                     added datetime not null default current_timestamp,
-                    name nvarchar(1000) unique,
+                    name nvarchar(1000),
                     retrieved datetime
                 )
             ");
@@ -55,8 +55,8 @@ namespace Jacere.Crawler.Poems
 
         public async Task Crawl()
         {
-            await CrawlPoetSlugs();
-            await CrawlPoemSlugs();
+            //await CrawlPoetSlugs();
+            //await CrawlPoemSlugs();
             await CrawlPoemDetails();
         }
 
@@ -115,7 +115,9 @@ namespace Jacere.Crawler.Poems
                         var root = (await GetHtmlDocument(nextPage, Encoding.UTF8)).DocumentNode;
 
                         var currentSlugs = root.Select(@"//table[@class='poems']//td[@class='title']/a")
-                            .Select(x => x.GetAttribute("href").Trim('/').Split('/')[1]).ToList();
+                            .Select(x => x.GetAttribute("href").Trim('/').Split('/'))
+                            .Where(x => x.Length == 2)
+                            .Select(x => x[1]).ToList();
 
                         if (currentSlugs.Any())
                         {
@@ -149,6 +151,7 @@ namespace Jacere.Crawler.Poems
             var poems = _connection.Query<Poem>(@"
                 select slug, poet
                 from poem
+                where retrieved is null
             ").ToList();
 
             using (var progress = new ConsoleProgress("details", poems.Count))
@@ -199,8 +202,10 @@ namespace Jacere.Crawler.Poems
                         _connection.Execute(@"
                             update poem set
                                 retrieved = current_timestamp
-                            where slug = @poemSlug
-                        ");
+                            where slug = @slug
+                        ", new {
+                            poem.Slug,
+                        });
                     }
 
                     progress.Increment();
