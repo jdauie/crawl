@@ -2,6 +2,7 @@
 {
     public interface IDataStorageCommand
     {
-        string DatabasePath { get; set; }
+        string DatabasePath { get; }
+        int DelayInterval { get; }
     }
 }

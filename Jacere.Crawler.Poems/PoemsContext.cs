@@ -11,13 +11,19 @@ namespace Jacere.Crawler.Poems
     internal class PoemsContext : DataStorageContext, IDisposable
     {
         private const string BaseUri = @"http://www.poemhunter.com/";
-        private const int DelayInterval = 100;
 
         private readonly IDbConnection _connection;
-        
-        public PoemsContext(IDataStorageCommand command) : base(new Uri(BaseUri), command)
+        private readonly int _delayInterval;
+        private readonly bool _skipPoetSearch;
+        private readonly bool _skipPoemSearch;
+
+        public PoemsContext(PoemsCommand command) : base(new Uri(BaseUri), command)
         {
             OpenStorage();
+
+            _delayInterval = command.DelayInterval;
+            _skipPoetSearch = command.SkipPoetSearch;
+            _skipPoemSearch = command.SkipPoemSearch;
 
             _connection = OpenStorageConnection();
             
@@ -55,8 +61,16 @@ namespace Jacere.Crawler.Poems
 
         public async Task Crawl()
         {
-            //await CrawlPoetSlugs();
-            //await CrawlPoemSlugs();
+            if (!_skipPoetSearch)
+            {
+                await CrawlPoetSlugs();
+            }
+
+            if (!_skipPoemSearch)
+            {
+                await CrawlPoemSlugs();
+            }
+
             await CrawlPoemDetails();
         }
 
@@ -94,7 +108,7 @@ namespace Jacere.Crawler.Poems
                         break;
                     }
 
-                    await RandomDelay(TimeSpan.FromMilliseconds(DelayInterval));
+                    await RandomDelay(TimeSpan.FromMilliseconds(_delayInterval));
                 }
             }
         }
@@ -138,7 +152,7 @@ namespace Jacere.Crawler.Poems
                             break;
                         }
 
-                        await RandomDelay(TimeSpan.FromMilliseconds(DelayInterval));
+                        await RandomDelay(TimeSpan.FromMilliseconds(_delayInterval));
                     }
 
                     progress.Increment();
@@ -210,7 +224,7 @@ namespace Jacere.Crawler.Poems
 
                     progress.Increment();
 
-                    await RandomDelay(TimeSpan.FromMilliseconds(DelayInterval));
+                    await RandomDelay(TimeSpan.FromMilliseconds(_delayInterval));
                 }
             }
         }
