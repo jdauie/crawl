@@ -9,7 +9,7 @@ namespace Jacere.Crawler.Core
     {
         private readonly string _databasePath;
 
-        protected DataStorageContext(Uri baseUri, IDataStorageCommand command) : base(baseUri)
+        protected DataStorageContext(Uri baseUri, IDataStorageCommand command) : base(baseUri, command)
         {
             _databasePath = command.DatabasePath;
         }

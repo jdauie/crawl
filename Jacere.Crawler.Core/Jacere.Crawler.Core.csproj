@@ -74,6 +74,8 @@
     <Compile Include="ConsoleProgress.cs" />
     <Compile Include="DataStorageContext.cs" />
     <Compile Include="DataContext.cs" />
+    <Compile Include="IDataCommand.cs" />
+    <Compile Include="CollectionExtensions.cs" />
     <Compile Include="StringExtensions.cs" />
     <Compile Include="HtmlNodeExtensions.cs" />
     <Compile Include="ErrorHandlingConsoleCommand.cs" />
