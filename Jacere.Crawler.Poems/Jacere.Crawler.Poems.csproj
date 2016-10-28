@@ -62,8 +62,9 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="ExportPoemsCommand.cs" />
     <Compile Include="PoemsContext.cs" />
-    <Compile Include="PoemsCommand.cs" />
+    <Compile Include="CrawlPoemsCommand.cs" />
     <Compile Include="Poem.cs" />
     <Compile Include="Poet.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

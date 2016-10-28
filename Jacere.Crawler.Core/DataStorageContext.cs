@@ -18,14 +18,24 @@ namespace Jacere.Crawler.Core
         {
             if (!File.Exists(_databasePath))
             {
-                Directory.CreateDirectory(Path.GetDirectoryName(_databasePath));
-                SQLiteConnection.CreateFile(_databasePath);
+                CreateStorage(_databasePath);
             }
+        }
+
+        protected static void CreateStorage(string databasePath)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(databasePath));
+            SQLiteConnection.CreateFile(databasePath);
         }
 
         protected IDbConnection OpenStorageConnection()
         {
-            var connection = new SQLiteConnection($@"Data Source={_databasePath};Version=3;foreign keys=true;");
+            return OpenStorageConnection(_databasePath);
+        }
+
+        protected static IDbConnection OpenStorageConnection(string databasePath, bool readOnly = false)
+        {
+            var connection = new SQLiteConnection($@"Data Source={databasePath};Version=3;foreign keys=true;read only={Convert.ToString(readOnly)}");
             connection.Open();
             return connection;
         }

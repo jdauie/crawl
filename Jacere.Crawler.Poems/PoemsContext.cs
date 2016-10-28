@@ -17,7 +17,7 @@ namespace Jacere.Crawler.Poems
         private readonly bool _skipPoetSearch;
         private readonly bool _skipPoemSearch;
 
-        public PoemsContext(PoemsCommand command) : base(new Uri(BaseUri), command)
+        public PoemsContext(CrawlPoemsCommand command) : base(new Uri(BaseUri), command)
         {
             OpenStorage();
 
@@ -59,6 +59,46 @@ namespace Jacere.Crawler.Poems
             ");
         }
 
+        public static async Task Export(string sourcePath, string outputPath)
+        {
+            CreateStorage(outputPath);
+            
+            using (var output = OpenStorageConnection(":memory:"))
+            {
+                await output.ExecuteAsync(@"
+                    attach database @sourcePath as source;
+
+                    attach database @outputPath as output;
+
+                    create table output.poem (
+                        slug nvarchar(100) unique not null,
+                        title nvarchar(1000),
+                        html nvarchar(1000000),
+                        poet_slug nvarchar(100) not null,
+                        poet_name nvarchar(1000) not null
+                    );
+
+                    insert into output.poem (slug, title, html, poet_slug, poet_name)
+                    select
+                        sm.slug,
+                        sm.title,
+                        sm.html,
+                        st.slug,
+                        st.name
+                    from source.poem as sm
+                    inner join source.poet as st on sm.poet = st.slug
+                    where sm.retrieved is not null
+                    and sm.title is not null;
+
+                    vacuum output;
+                ", new
+                {
+                    sourcePath,
+                    outputPath,
+                });
+            }
+        }
+
         public async Task Crawl()
         {
             if (!_skipPoetSearch)
@@ -72,6 +112,11 @@ namespace Jacere.Crawler.Poems
             }
 
             await CrawlPoemDetails();
+        }
+
+        private async Task ReCrawlOnePoemForEachPoetToGetName()
+        {
+            
         }
 
         private async Task CrawlPoetSlugs()
@@ -205,10 +250,10 @@ namespace Jacere.Crawler.Poems
                             update poet set
                                 name = @author,
                                 retrieved = current_timestamp
-                            where slug = @slug
+                            where slug = @poet
                         ", new {
                             author,
-                            poem.Slug,
+                            poem.Poet,
                         });
                     }
                     else
