@@ -83,8 +83,7 @@ namespace Jacere.Crawler.Poems
                         st.name
                     from source.poem as sm
                     inner join source.poet as st on sm.poet = st.slug
-                    where sm.retrieved is not null
-                    and sm.title is not null;
+                    where sm.title is not null;
 
                     vacuum output;
                 ", new
@@ -97,22 +96,62 @@ namespace Jacere.Crawler.Poems
 
         public async Task Crawl()
         {
-            if (!_skipPoetSearch)
-            {
-                await CrawlPoetSlugs();
-            }
+            await ReCrawlOnePoemForEachPoetToGetName();
 
-            if (!_skipPoemSearch)
-            {
-                await CrawlPoemSlugs();
-            }
+            //if (!_skipPoetSearch)
+            //{
+            //    await CrawlPoetSlugs();
+            //}
 
-            await CrawlPoemDetails();
+            //if (!_skipPoemSearch)
+            //{
+            //    await CrawlPoemSlugs();
+            //}
+
+            //await CrawlPoemDetails();
         }
 
         private async Task ReCrawlOnePoemForEachPoetToGetName()
         {
-            
+            var poets = _connection.Query<string>(@"
+                select distinct poet
+                from poem
+                where title is not null
+            ").ToList();
+
+            foreach (var poet in poets.WithProgress("poets"))
+            {
+                var poem = _connection.QuerySingle<string>(@"
+                    select slug
+                    from poem
+                    where poet = @poet
+                    and retrieved is not null
+                    limit 1 offset 0
+                ", new
+                {
+                    poet,
+                });
+
+                var root = (await GetHtmlDocument($@"/poem/{poem}")).DocumentNode;
+
+                var author = root.Select(@"//meta[@itemprop='author']")
+                    .SingleOrDefault()?.GetAttribute("content");
+
+                if (author != null)
+                {
+                    _connection.Execute(@"
+                        update poet set
+                            name = @author,
+                            retrieved = current_timestamp
+                        where slug = @poet
+                    ", new {
+                        author,
+                        poet,
+                    });
+                }
+
+                await RandomDelay();
+            }
         }
 
         private async Task CrawlPoetSlugs()
