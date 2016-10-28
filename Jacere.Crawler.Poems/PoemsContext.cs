@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Data;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 using Dapper;
 using Jacere.Crawler.Core;
@@ -13,15 +12,13 @@ namespace Jacere.Crawler.Poems
         private const string BaseUri = @"http://www.poemhunter.com/";
 
         private readonly IDbConnection _connection;
-        private readonly int _delayInterval;
         private readonly bool _skipPoetSearch;
         private readonly bool _skipPoemSearch;
 
         public PoemsContext(CrawlPoemsCommand command) : base(new Uri(BaseUri), command)
         {
             OpenStorage();
-
-            _delayInterval = command.DelayInterval;
+            
             _skipPoetSearch = command.SkipPoetSearch;
             _skipPoemSearch = command.SkipPoemSearch;
 
@@ -51,7 +48,6 @@ namespace Jacere.Crawler.Poems
                     added datetime not null default current_timestamp,
                     poet nvarchar(100) not null,
                     title nvarchar(1000),
-                    familyfriendly integer,
                     html nvarchar(1000000),
                     retrieved datetime,
                     foreign key (poet) references poet(slug)
@@ -121,41 +117,22 @@ namespace Jacere.Crawler.Poems
 
         private async Task CrawlPoetSlugs()
         {
-            using (var progress = new ConsoleProgress("poets"))
-            {
-                for (var i = 1;; i++)
+            await ForeachHtmlPageWithNext(
+                progressTitle: "poets",
+                pageUrlFormat: @"/p/t/l.asp?a=0&l=All&cinsiyet=&Populer_mi=&Classicmi=&Dogum_Tarihi_yil=&Dogum_Yeri=&p={0}",
+                lastPageSelector: @"//div[contains(@class, 'pagination')]//li[last()]/a",
+                itemsSelector: @"//ol[contains(@class, 'poets-grid')]//a[@class='name']",
+                nextSelector: @"//div[contains(@class, 'pagination')]//li[@class='next']",
+                filterItems: items => items.Select(x => x.Trim('/')),
+                handleItem: slug =>
                 {
-                    var nextPage = $"/p/t/l.asp?a=0&l=All&cinsiyet=&Populer_mi=&Classicmi=&Dogum_Tarihi_yil=&Dogum_Yeri=&p={i}";
-                    var root = (await GetHtmlDocument(nextPage, Encoding.UTF8)).DocumentNode;
-
-                    var lastPage = root.Select(@"//div[contains(@class, 'pagination')]//li[last()]/a")
-                        .First().GetValueInt();
-
-                    progress.SetTotal(lastPage);
-
-                    var currentSlugs = root.Select(@"//ol[contains(@class, 'poets-grid')]//a[@class='name']")
-                        .Select(x => x.GetAttribute("href").Trim('/'));
-
-                    foreach (var slug in currentSlugs)
-                    {
-                        _connection.Execute(@"
-                            insert or ignore into poet (slug) values (@slug)
-                        ", new
-                        {
-                            slug,
-                        });
-                    }
-
-                    progress.Increment();
-
-                    if (!root.Has(@"//div[contains(@class, 'pagination')]//li[@class='next']"))
-                    {
-                        break;
-                    }
-
-                    await RandomDelay(TimeSpan.FromMilliseconds(_delayInterval));
+                    _connection.Execute(@"
+                        insert or ignore into poet (slug) values (@slug)
+                    ", new {
+                        slug,
+                    });
                 }
-            }
+            );
         }
 
         private async Task CrawlPoemSlugs()
@@ -163,45 +140,27 @@ namespace Jacere.Crawler.Poems
             var poets = _connection.Query<Poet>(@"
                 select * from poet
             ").ToList();
-
-            using (var progress = new ConsoleProgress("poems", poets.Count))
+            
+            foreach (var poet in poets.WithProgress("poems"))
             {
-                foreach (var poet in poets)
-                {
-                    for (var i = 1;; i++)
+                await ForeachHtmlPageWithNext(
+                    pageUrlFormat: $@"/{poet.Slug}/poems/page-{{0}}",
+                    itemsSelector: @"//table[@class='poems']//td[@class='title']/a",
+                    nextSelector: @"//div[contains(@class, 'pagination')]//li[@class='next']",
+                    filterItems: items => items
+                        .Select(x => x.Trim('/').Split('/'))
+                        .Where(x => x.Length == 2)
+                        .Select(x => x[1]),
+                    handleItem: slug =>
                     {
-                        var nextPage = $@"/{poet.Slug}/poems/page-{i}";
-                        var root = (await GetHtmlDocument(nextPage, Encoding.UTF8)).DocumentNode;
-
-                        var currentSlugs = root.Select(@"//table[@class='poems']//td[@class='title']/a")
-                            .Select(x => x.GetAttribute("href").Trim('/').Split('/'))
-                            .Where(x => x.Length == 2)
-                            .Select(x => x[1]).ToList();
-
-                        if (currentSlugs.Any())
-                        {
-                            foreach (var slug in currentSlugs)
-                            {
-                                _connection.Execute(@"
-                                    insert or ignore into poem (slug, poet) values (@slug, @poet);
-                                ", new
-                                {
-                                    slug,
-                                    poet = poet.Slug,
-                                });
-                            }
-                        }
-
-                        if (!root.Has(@"//div[contains(@class, 'pagination')]//li[@class='next']"))
-                        {
-                            break;
-                        }
-
-                        await RandomDelay(TimeSpan.FromMilliseconds(_delayInterval));
+                        _connection.Execute(@"
+                            insert or ignore into poem (slug, poet) values (@slug, @poet)
+                        ", new {
+                            slug,
+                            poet = poet.Slug,
+                        });
                     }
-
-                    progress.Increment();
-                }
+                );
             }
         }
 
@@ -212,39 +171,33 @@ namespace Jacere.Crawler.Poems
                 from poem
                 where retrieved is null
             ").ToList();
-
-            using (var progress = new ConsoleProgress("details", poems.Count))
+            
+            foreach (var poem in poems.WithProgress("details"))
             {
-                foreach (var poem in poems)
+                var root = (await GetHtmlDocument($@"/poem/{poem.Slug}")).DocumentNode;
+
+                var author = root.Select(@"//meta[@itemprop='author']")
+                    .SingleOrDefault()?.GetAttribute("content");
+
+                if (author != null)
                 {
-                    var root = (await GetHtmlDocument($@"http://www.poemhunter.com/poem/{poem.Slug}", Encoding.UTF8)).DocumentNode;
+                    var title = root.Select(@"//h1[@itemprop='name'][starts-with(@class, 'title')]")
+                        .Single().GetValue().SubstringUntil(" - Poem by ");
+                    var html = root.SelectSingleNode(@"//div[@class='KonaBody']//p").InnerHtml;
 
-                    var author = root.Select(@"//meta[@itemprop='author']")
-                        .SingleOrDefault()?.GetAttribute("content");
-
-                    if (author != null)
-                    {
-                        var title = root.Select(@"//h1[@itemprop='name'][starts-with(@class, 'title')]")
-                            .Single().GetValue().Until(" - Poem by ");
-                        var familyFriendly = root.SelectSingleNode(@"//meta[@itemprop='isFamilyFriendly']")
-                            .GetAttribute("content") == "true";
-                        var html = root.SelectSingleNode(@"//div[@class='KonaBody']//p").InnerHtml;
-
-                        _connection.Execute(@"
-                            update poem set
-                                poet = @poet,
-                                title = @title,
-                                familyfriendly = @familyFriendly,
-                                html = @html,
-                                retrieved = current_timestamp
-                            where slug = @slug
-                        ", new {
-                            poem.Poet,
-                            title,
-                            familyFriendly,
-                            html,
-                            poem.Slug,
-                        });
+                    _connection.Execute(@"
+                        update poem set
+                            poet = @poet,
+                            title = @title,
+                            html = @html,
+                            retrieved = current_timestamp
+                        where slug = @slug
+                    ", new {
+                        poem.Poet,
+                        title,
+                        html,
+                        poem.Slug,
+                    });
 
                         _connection.Execute(@"
                             update poet set
@@ -267,10 +220,7 @@ namespace Jacere.Crawler.Poems
                         });
                     }
 
-                    progress.Increment();
-
-                    await RandomDelay(TimeSpan.FromMilliseconds(_delayInterval));
-                }
+                await RandomDelay();
             }
         }
 
