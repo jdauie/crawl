@@ -67,23 +67,22 @@ namespace Jacere.Crawler.Poems
                     attach database @outputPath as output;
 
                     create table output.poem (
-                        slug nvarchar(100) unique not null,
-                        title nvarchar(1000),
-                        html nvarchar(1000000),
+                        title nvarchar(1000)not null,
+                        html nvarchar(1000000) not null,
                         poet_slug nvarchar(100) not null,
                         poet_name nvarchar(1000) not null
                     );
 
-                    insert into output.poem (slug, title, html, poet_slug, poet_name)
+                    insert into output.poem (title, html, poet_slug, poet_name)
                     select
-                        sm.slug,
                         sm.title,
                         sm.html,
                         st.slug,
                         st.name
                     from source.poem as sm
                     inner join source.poet as st on sm.poet = st.slug
-                    where sm.title is not null;
+                    where sm.title is not null
+                    and st.name is not null;
 
                     vacuum output;
                 ", new
