@@ -78,7 +78,8 @@ namespace Jacere.Crawler.Poems
                     from source.poem as sm
                     inner join source.poet as st on sm.poet = st.slug
                     where sm.title is not null
-                    and st.name is not null;
+                    and st.name is not null
+                    and st.name != '';
 
                     create table output.poem (
                         slug nvarchar(100) not null,
@@ -97,7 +98,8 @@ namespace Jacere.Crawler.Poems
                     from source.poem as sm
                     inner join source.poet as st on sm.poet = st.slug
                     where sm.title is not null
-                    and st.name is not null;
+                    and st.name is not null
+                    and st.name != '';
 
                     vacuum output;
                 ", new
